@@ -1,6 +1,22 @@
 package main
 /*
 Web service that plays audio loops, controlled by HTTP requests.
+
+Start the server with a list of files:
+	loops [WAV files]
+
+e.g. loops one.wav two.wav
+
+Use the files’ base names (without .wav file extensions) as URL paths.
+
+Queue audio:
+	http POST http://localhost:9000/one
+
+Queue audio to loop continuously:
+	http POST 'http://localhost:9000/one?loop'
+
+Stop playing
+	http DELETE 'http://localhost:9000/'
 */
 
 import (
@@ -13,8 +29,10 @@ import (
 	"strings"
 )
 
+// Listen address
 var address = ":9000"
 
+// Loaded audio players, and the current player.
 var players = make(map[string]*audio.Player)
 var current *audio.Player
 
@@ -23,6 +41,7 @@ var transport = make(chan string)
 var looping = make(chan bool)
 
 // Plays a loop.
+// TODO Use a single channel, so the transport/looping command is consumed together.
 func play(writer http.ResponseWriter, request *http.Request) {
 	fmt.Println(request.Method, request.URL)
 	if (request.Method == "POST") {
@@ -35,7 +54,7 @@ func play(writer http.ResponseWriter, request *http.Request) {
 	}
 }
 
-// Creates a player for the given file name.
+// Creates a player for the given file path.
 func load(path string) (file *os.File, player *audio.Player) {
 	loopName := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	fmt.Printf("Loading %s\n", loopName)
@@ -82,7 +101,7 @@ func start() {
 	}
 }
 
-// Sets up an audio player and the HTTP interface.
+// Sets up audio players for the command line arguments and the HTTP interface.
 func main() {
 	for _, path := range os.Args[1:] {
 		if (filepath.Ext(path) == ".wav") {
