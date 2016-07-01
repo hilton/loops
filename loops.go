@@ -8,51 +8,74 @@ import (
 	"golang.org/x/mobile/exp/audio"
 	"os"
 	"net/http"
+	"path/filepath"
+	"path"
+	"strings"
 )
 
+var address = ":9000"
+
+var players = make(map[string]*audio.Player)
+var current *audio.Player
+
 // Channel for controlling the player.
-var transport = make(chan bool)
+var transport = make(chan string)
+var looping = make(chan bool)
 
 // Plays a loop.
-// TODO Separate endpoints for play (once) and loop (indefinitely).
 func play(writer http.ResponseWriter, request *http.Request) {
-	fmt.Println(request.Method + " /play")
-	transport <- true
-}
-
-// Stops playing a loop.
-func stop(writer http.ResponseWriter, request *http.Request) {
-	fmt.Println(request.Method + " /stop")
-	transport <- false
+	fmt.Println(request.Method, request.URL)
+	if (request.Method == "POST") {
+		_, loop := request.URL.Query()["loop"]
+		looping <- loop
+		transport <- path.Base(request.URL.Path)
+	}
+	if (request.Method == "DELETE") {
+		transport <- ""
+	}
 }
 
 // Creates a player for the given file name.
-func player(fileName string) {
-	// TODO Use standard resource path
-	file, err := os.Open(fileName)
-	defer file.Close()
+func load(path string) (file *os.File, player *audio.Player) {
+	loopName := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	fmt.Printf("Loading %s\n", loopName)
+	file, err := os.Open(path)
 	if err != nil {
-		fmt.Println(err)
-		return
+		panic(err)
 	}
 
-	player, err := audio.NewPlayer(file, 0, 0)
-	defer player.Close()
+	player, err = audio.NewPlayer(file, 0, 0)
 	if err != nil {
-		fmt.Println(err)
+		panic(err)
 	}
-	fmt.Printf("Loaded %s\n", player)
 
+	players[loopName] = player
+	return
+}
+
+// Controls the players, using the looping and transport channels.
+func start() {
 	// TODO Fix audio click on loop.
+	var loop = false
 	var playing = false
 	for {
 		select {
-		case command := <-transport:
-			playing = command
+		case name := <-transport:
+			fmt.Printf("Play %s, loop = %v\n", name, loop)
+			playing = players[name] != nil
+			current = players[name]
+		case newLoop := <-looping:
+			loop = newLoop
 		default:
 			if (playing) {
-				err = player.Play()
-				for player.State() == audio.Playing {
+				err := current.Play()
+				if (err != nil) {
+					panic(err)
+				}
+				for current.State() == audio.Playing {
+				}
+				if (!loop) {
+					playing = false
 				}
 			}
 		}
@@ -61,10 +84,16 @@ func player(fileName string) {
 
 // Sets up an audio player and the HTTP interface.
 func main() {
-	// TODO Use command line arguments to register audio files to play.
-	go player("beat.wav")
+	for _, path := range os.Args[1:] {
+		if (filepath.Ext(path) == ".wav") {
+			file, player := load(path)
+			defer file.Close()
+			defer player.Close()
+		}
+	}
+	go start()
 
-	http.HandleFunc("/play", play)
-	http.HandleFunc("/stop", stop)
-	http.ListenAndServe(":9000", nil)
+	http.HandleFunc("/", play)
+	fmt.Printf("Listening on address %s...\n", address)
+	http.ListenAndServe(address, nil)
 }
