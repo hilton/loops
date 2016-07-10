@@ -15,7 +15,7 @@ Queue audio:
 Queue audio to loop continuously:
 	http POST 'http://localhost:9000/one?loop'
 
-Stop playing
+Stop playing at the end of the current loop:
 	http DELETE 'http://localhost:9000/'
 */
 
@@ -42,6 +42,7 @@ var looping = make(chan bool)
 
 // Plays a loop.
 // TODO Use a single channel, so the transport/looping command is consumed together.
+// TODO Make a DELETE request asynchronous
 func play(writer http.ResponseWriter, request *http.Request) {
 	fmt.Println(request.Method, request.URL)
 	if (request.Method == "POST") {
@@ -80,7 +81,6 @@ func start() {
 	for {
 		select {
 		case name := <-transport:
-			fmt.Printf("Play %s, loop = %v\n", name, loop)
 			playing = players[name] != nil
 			current = players[name]
 		case newLoop := <-looping:
