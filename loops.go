@@ -44,14 +44,22 @@ var looping = make(chan bool)
 // TODO Use a single channel, so the transport/looping command is consumed together.
 // TODO Make a DELETE request asynchronous
 func play(writer http.ResponseWriter, request *http.Request) {
-	fmt.Println(request.Method, request.URL)
+	fmt.Printf("\n%s %s ", request.Method, request.URL)
 	if (request.Method == "POST") {
-		_, loop := request.URL.Query()["loop"]
-		looping <- loop
-		transport <- path.Base(request.URL.Path)
-	}
-	if (request.Method == "DELETE") {
+		loopName := path.Base(request.URL.Path)
+		_, loopDefined := players[loopName]
+		if (loopDefined) {
+			_, loop := request.URL.Query()["loop"]
+			looping <- loop
+			transport <- loopName
+		} else {
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	} else if (request.Method == "DELETE") {
+		fmt.Printf("\033[31m■\033[0m\n", )
 		transport <- ""
+	} else {
+		writer.WriteHeader(http.StatusMethodNotAllowed)
 	}
 }
 
@@ -80,19 +88,19 @@ func start() {
 	var playing = false
 	for {
 		select {
+		case newLoop := <-looping:
+			loop = newLoop
 		case name := <-transport:
 			playing = players[name] != nil
 			current = players[name]
-		case newLoop := <-looping:
-			loop = newLoop
 		default:
 			if (playing) {
+				fmt.Printf("\033[32m▶ \033[0m", )
 				err := current.Play()
 				if (err != nil) {
 					panic(err)
 				}
-				for current.State() == audio.Playing {
-				}
+				for current.State() == audio.Playing {}
 				if (!loop) {
 					playing = false
 				}
