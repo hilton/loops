@@ -1,6 +1,6 @@
 package main
 /*
-Web service that plays audio loops, controlled by HTTP requests.
+Web service that plays audio loops (a.k.a clips), controlled by HTTP requests.
 
 Start the server with a list of files:
 	loops [WAV files]
@@ -15,7 +15,7 @@ Queue audio:
 Queue audio to loop continuously:
 	http POST 'http://localhost:9000/one?loop'
 
-Stop playing at the end of the current loop:
+Stop playing at the end of the current clip:
 	http DELETE 'http://localhost:9000/'
 */
 
@@ -36,28 +36,31 @@ var address = ":9000"
 var players = make(map[string]*audio.Player)
 var current *audio.Player
 
-// Channel for controlling the player.
-var transport = make(chan string)
-var looping = make(chan bool)
+// Command to play a named clip, with optional looping.
+type command struct {
+	clip string
+	loop bool
+}
 
-// Plays a loop.
-// TODO Use a single channel, so the transport/looping command is consumed together.
+// Channel for controlling the player.
+var transport = make(chan command)
+
+// Plays a clip.
 // TODO Make a DELETE request asynchronous
 func play(writer http.ResponseWriter, request *http.Request) {
 	fmt.Printf("\n%s %s ", request.Method, request.URL)
 	if (request.Method == "POST") {
-		loopName := path.Base(request.URL.Path)
-		_, loopDefined := players[loopName]
-		if (loopDefined) {
+		clip := path.Base(request.URL.Path)
+		_, clipDefined := players[clip]
+		if (clipDefined) {
 			_, loop := request.URL.Query()["loop"]
-			looping <- loop
-			transport <- loopName
+			transport <- command{clip, loop}
 		} else {
 			writer.WriteHeader(http.StatusNotFound)
 		}
 	} else if (request.Method == "DELETE") {
 		fmt.Printf("\033[31m■\033[0m\n", )
-		transport <- ""
+		transport <- command{}
 	} else {
 		writer.WriteHeader(http.StatusMethodNotAllowed)
 	}
@@ -65,8 +68,8 @@ func play(writer http.ResponseWriter, request *http.Request) {
 
 // Creates a player for the given file path.
 func load(path string) (file *os.File, player *audio.Player) {
-	loopName := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-	fmt.Printf("Loading %s\n", loopName)
+	clipName := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	fmt.Printf("Loading %s\n", clipName)
 	file, err := os.Open(path)
 	if err != nil {
 		panic(err)
@@ -77,7 +80,7 @@ func load(path string) (file *os.File, player *audio.Player) {
 		panic(err)
 	}
 
-	players[loopName] = player
+	players[clipName] = player
 	return
 }
 
@@ -88,11 +91,10 @@ func start() {
 	var playing = false
 	for {
 		select {
-		case newLoop := <-looping:
-			loop = newLoop
-		case name := <-transport:
-			playing = players[name] != nil
-			current = players[name]
+		case command := <-transport:
+			playing = players[command.clip] != nil
+			current = players[command.clip]
+			loop = command.loop
 		default:
 			if (playing) {
 				fmt.Printf("\033[32m▶ \033[0m", )
