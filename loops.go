@@ -46,8 +46,7 @@ type command struct {
 var transport = make(chan command)
 
 // Plays a clip.
-// TODO Make a DELETE request asynchronous
-func play(writer http.ResponseWriter, request *http.Request) {
+func control(writer http.ResponseWriter, request *http.Request) {
 	fmt.Printf("\n%s %s ", request.Method, request.URL)
 	if (request.Method == "POST") {
 		clip := path.Base(request.URL.Path)
@@ -89,23 +88,22 @@ func start() {
 	// TODO Fix audio click on loop.
 	var loop = false
 	var playing = false
+	var next *audio.Player
 	for {
 		select {
 		case command := <-transport:
-			playing = players[command.clip] != nil
-			current = players[command.clip]
+			playing = command.clip != ""
+			next = players[command.clip]
 			loop = command.loop
 		default:
-			if (playing) {
-				fmt.Printf("\033[32m▶ \033[0m", )
-				err := current.Play()
-				if (err != nil) {
-					panic(err)
-				}
-				for current.State() == audio.Playing {}
-				if (!loop) {
-					playing = false
-				}
+		}
+
+		if (playing && loop && current.State() != audio.Playing) {
+			current = next
+			fmt.Printf("\033[32m▶ \033[0m", )
+			err := current.Play()
+			if (err != nil) {
+				panic(err)
 			}
 		}
 	}
@@ -122,7 +120,7 @@ func main() {
 	}
 	go start()
 
-	http.HandleFunc("/", play)
+	http.HandleFunc("/", control)
 	fmt.Printf("Listening on address %s...\n", address)
 	http.ListenAndServe(address, nil)
 }
