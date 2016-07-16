@@ -2,17 +2,17 @@ package main
 /*
 Web service that plays audio loops (a.k.a clips), controlled by HTTP requests.
 
-Start the server with a list of files:
+Usage: start the server with a list of files
 	loops [WAV files]
 
 e.g. loops one.wav two.wav
 
 Use the files’ base names (without .wav file extensions) as URL paths.
 
-Queue audio:
+Queue an audio clip:
 	http POST http://localhost:9000/one
 
-Queue audio to loop continuously:
+Queue an audio clip to loop continuously:
 	http POST 'http://localhost:9000/one?loop'
 
 Stop playing at the end of the current clip:
@@ -29,7 +29,6 @@ import (
 	"strings"
 )
 
-// Listen address
 var address = ":9000"
 
 // Loaded audio players, and the current player.
@@ -85,7 +84,6 @@ func load(path string) (file *os.File, player *audio.Player) {
 
 // Controls the players, using the looping and transport channels.
 func start() {
-	// TODO Fix audio click on loop.
 	var loop = false
 	var playing = false
 	var next *audio.Player
@@ -98,7 +96,9 @@ func start() {
 		default:
 		}
 
-		if (playing && loop && current.State() != audio.Playing) {
+		finished := current.State() != audio.Playing
+		changing := current != next
+		if (playing && finished && (loop || changing)) {
 			current = next
 			fmt.Printf("\033[32m▶ \033[0m", )
 			err := current.Play()
