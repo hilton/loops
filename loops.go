@@ -97,13 +97,17 @@ func start() {
 		}
 
 		finished := current.State() != audio.Playing
-		changing := current != next
-		if (playing && finished && (loop || changing)) {
+		changing := current != nil && current != next
+		if finished && playing {
 			current = next
+			changing = false
 			fmt.Printf("\033[32m▶ \033[0m", )
 			err := current.Play()
 			if (err != nil) {
 				panic(err)
+			}
+			if !(loop || changing) {
+				playing  = false
 			}
 		}
 	}
