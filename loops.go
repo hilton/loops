@@ -86,27 +86,25 @@ func load(path string) (file *os.File, player *audio.Player) {
 func start() {
 	var loop = false
 	var playing = false
-	var next *audio.Player
 	for {
+		for current.State() == audio.Playing {
+		}
+
 		select {
 		case command := <-transport:
 			playing = command.clip != ""
-			next = players[command.clip]
+			current = players[command.clip]
 			loop = command.loop
 		default:
 		}
 
-		finished := current.State() != audio.Playing
-		changing := current != nil && current != next
-		if finished && playing {
-			current = next
-			changing = false
+		if playing {
 			fmt.Printf("\033[32m▶ \033[0m", )
 			err := current.Play()
 			if (err != nil) {
 				panic(err)
 			}
-			if !(loop || changing) {
+			if !loop {
 				playing  = false
 			}
 		}
